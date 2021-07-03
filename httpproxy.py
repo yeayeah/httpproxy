@@ -94,7 +94,7 @@ class proxify(threading.Thread):
 				proxies = [ rocksock.RocksockProxyFromURL(args.i2p) ]
 
 			else:
-				pl = proxylist
+				pl = self.proxylist
 
 				if args.base_chain:
 					chain.append(args.base_chain)
@@ -103,11 +103,15 @@ class proxify(threading.Thread):
 					upstream = None
 					proxies = []
 
-				for i in range(args.len):
-					choice = random.choice(pl)
+				for i in range(args.len - 1):
+					choice = random.choice([ p for p in pl ])
 					chain.append(choice)
-					pl.remove(choice)
+					del( pl[choice] )
 					proxies.append( rocksock.RocksockProxyFromURL(choice) )
+
+				lasthop = random.choice([ p for p in pl if not p in chain and pl[p] == 0])
+				chain.append(lasthop)
+				proxies.append( rocksock.RocksockProxyFromURL( lasthop ) )
 
 			sock = rocksock.Rocksock(host=host, port=port, ssl=False, proxies=proxies, timeout=args.timeout)
 
@@ -125,9 +129,10 @@ class proxify(threading.Thread):
 	def rebuild_request_for_tor(self, req):
 		return req
 
-	def __init__(self, c):
+	def __init__(self, c, proxylist):
 		threading.Thread.__init__(self)
 		self.c = c
+		self.proxylist = proxylist
 		self.run()
 
 	def run(self):
@@ -192,7 +197,9 @@ if __name__ == '__main__':
 		except KeyboardInterrupt: break
 		except: raise
 
-		proxylist = [ '%s://%s' % (p[0], p[1]) for p in sql.execute("SELECT proto,proxy from proxylist where failed=0").fetchall() ]
+		proxylist = {}
+		for p in sql.execute("SELECT proto,proxy,mitm from proxylist where failed=0").fetchall():
+			proxylist['%s://%s' % (p[0], p[1])] = p[2]
 
-		t = threading.Thread(target=proxify, args=(c,))
+		t = threading.Thread(target=proxify, args=(c, proxylist))
 		t.start()
