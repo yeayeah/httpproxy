@@ -29,7 +29,6 @@ def _parse_url(url):
 		host = url.split(':')[0]
 		port = int(url.split(':')[1])
 		return host, port, None, url
-		raise
 
 	if not '/' in url: url = url + '/'
 
