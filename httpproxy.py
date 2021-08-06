@@ -12,6 +12,7 @@ import select
 import ssl
 import string
 from os import path
+import time
 
 http_verbs = ['CONNECT', 'GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'TRACE', 'PATCH']
 
@@ -25,6 +26,7 @@ class HttpClient():
 	def read_request(self):
 		s = ''
 		while 1:
+			time.sleep(0.1)
 			rnrn = s.find('\r\n\r\n')
 			if rnrn != -1: break
 			r = self.conn.recv(1024)
@@ -38,6 +40,7 @@ class HttpClient():
 
 		recv = ''
 		while 1:
+			time.sleep(0.1)
 			a,b,c = select.select([rs.sock, self.conn], [], [])
 			dst = self.conn if a[0] == rs.sock else rs
 
@@ -116,7 +119,9 @@ class proxify(threading.Thread):
 			sock = rocksock.Rocksock(host=host, port=port, ssl=False, proxies=proxies, timeout=args.timeout)
 
 			try: sock.connect()
-			except: continue
+			except:
+				time.sleep(0.1)
+				continue
 
 			return sock, chain
 
