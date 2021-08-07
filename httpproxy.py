@@ -182,6 +182,7 @@ class proxify(threading.Thread):
 	def run(self):
 		req = self.c.read_request()
 		host = None
+		t = None
 
 		if req is not None:
 
@@ -208,7 +209,7 @@ class proxify(threading.Thread):
 						rs.send(req)
 					self.c.relay(rs, req)
 
-		t.stop()
+		if t is not None: t.stop()
 		try: self.c.conn.close()
 		except: pass
 		print('%s/%s client disconnected' % (timestamp(), self.c.id))
