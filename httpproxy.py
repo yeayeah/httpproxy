@@ -132,9 +132,7 @@ class BuildChain(threading.Thread):
 			self.ready = True
 			break
 
-		while self.running: time.sleep(0.1)
-		try: self.sock.disconnect()
-		except: pass
+		while self.running: time.sleep(1)
 
 class proxify(threading.Thread):
 
@@ -174,7 +172,9 @@ class proxify(threading.Thread):
 				if not t.ready: continue
 				print('%s/%s thread %s is ready...' % (timestamp(), self.c.id, t))
 				for u in chains:
-					if not t == u: t.stop()
+					if not t == u:
+						print('%s/%s stopping thread %s' % (timestamp(), self.c.id, u))
+						u.stop()
 
 				rs, chain = t.get()
 				return t, rs, chain
@@ -207,7 +207,8 @@ class proxify(threading.Thread):
 						elif host.endswith('.onion'): req = self.rebuild_request_for_tor(req)
 						rs.send(req)
 					self.c.relay(rs, req)
-					t.stop()
+
+		t.stop()
 		try: self.c.conn.close()
 		except: pass
 		print('%s/%s client disconnected' % (timestamp(), self.c.id))
