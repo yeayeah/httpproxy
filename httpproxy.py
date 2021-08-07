@@ -102,7 +102,7 @@ class BuildChain(threading.Thread):
 				proxies = [ rocksock.RocksockProxyFromURL(args.i2p) ]
 
 			else:
-				pl = self.proxylist
+				pl = [ p for p in self.proxylist ]
 
 				if args.base_chain:
 					chain.append(args.base_chain)
@@ -117,7 +117,8 @@ class BuildChain(threading.Thread):
 					del( pl[choice] )
 					proxies.append( rocksock.RocksockProxyFromURL(choice) )
 
-				lasthop = random.choice([ p for p in pl if not p in chain and pl[p] == 0])
+				try: lasthop = random.choice([ p for p in self.proxylist if not p in chain and self.proxylist[p] == 0])
+				except: continue
 				chain.append(lasthop)
 				proxies.append( rocksock.RocksockProxyFromURL( lasthop ) )
 
