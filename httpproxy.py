@@ -74,25 +74,30 @@ class HttpProxy():
 		c = HttpClient(conn, addr)
 		return c
 
-class proxify(threading.Thread):
+class BuildChain(threading.Thread):
+	def __init__(self, proxylist, host=None, port=None):
+		self.port = port
+		self.host = host
+		self.proxylist = proxylist
+		self.ready = False
+		threading.Thread.__init__(self)
 
-	def get_verb_line(self, req):
-		for line in req.split('\n'):
-			verb = line.split(' ')[0].upper()
-			if verb in http_verbs:
-				return verb, line.split(' ')[1]
-		return None, None
+	def stop(self):
+		self.running = False
 
-	def build_chain(self, proxylist, host=None, port=None):
+	def get(self):
+		return self.sock, self.chain
 
-		while 1:
+	def run(self):
+		self.running = True
+		while self.running:
 			chain = []
 
-			if host.endswith('.onion'):
+			if self.host.endswith('.onion'):
 				chain.append(args.tor)
 				proxies = [ rocksock.RocksockProxyFromURL(args.tor) ]
 
-			elif host.endswith('.i2p'):
+			elif self.host.endswith('.i2p'):
 				chain.append(args.i2p)
 				proxies = [ rocksock.RocksockProxyFromURL(args.i2p) ]
 
@@ -116,14 +121,27 @@ class proxify(threading.Thread):
 				chain.append(lasthop)
 				proxies.append( rocksock.RocksockProxyFromURL( lasthop ) )
 
-			sock = rocksock.Rocksock(host=host, port=port, ssl=False, proxies=proxies, timeout=args.timeout)
+			sock = rocksock.Rocksock(host=self.host, port=self.port, ssl=False, proxies=proxies, timeout=args.timeout)
 
 			try: sock.connect()
-			except:
-				time.sleep(0.1)
-				continue
+			except rocksock.RocksockException as e: continue
+			except: raise
 
-			return sock, chain
+			self.sock = sock
+			self.chain = chain
+			self.ready = True
+			break
+
+		while self.running: time.sleep(1)
+
+class proxify(threading.Thread):
+
+	def get_verb_line(self, req):
+		for line in req.split('\n'):
+			verb = line.split(' ')[0].upper()
+			if verb in http_verbs:
+				return verb, line.split(' ')[1]
+		return None, None
 
 	def rebuild_request_for_i2p(self, req):
 		for i in req.split('\n'):
@@ -140,21 +158,45 @@ class proxify(threading.Thread):
 		self.proxylist = proxylist
 		self.run()
 
+
+	def prep_chains(self, proxylist, host, port):
+		chains = []
+		for i in range(5):
+			t = BuildChain(proxylist, host, port)
+			t.start()
+			chains.append(t)
+
+		while True:
+			time.sleep(0.1)
+			for t in chains:
+				if not t.ready: continue
+				print('%s/%s thread %s is ready...' % (timestamp(), self.c.id, t))
+				for u in chains:
+					if not t == u:
+						print('%s/%s stopping thread %s' % (timestamp(), self.c.id, u))
+						u.stop()
+
+				rs, chain = t.get()
+				return t, rs, chain
+
 	def run(self):
 		req = self.c.read_request()
 		host = None
+
 		if req is not None:
 
 			verb, target = self.get_verb_line(req)
 
 			if verb is not None and target is not None:
 				host, port, use_ssl, uri = _parse_url(target)
+
 				if host in blocklist:
 					print('%s/%s %s %s [blocked]' % (timestamp(), self.c.id, verb, target))
 					host = None
 
 				if host is not None:
-					rs, chain = self.build_chain(proxylist, host, port)
+					t, rs, chain = self.prep_chains(proxylist, host, port)
+
 					print('%s/%s %s %s [%s]' % (timestamp(), self.c.id, verb, target, ', '.join(chain)))
 					if verb == 'CONNECT':
 						self.c.conn.send('HTTP/1.0 200 OK\r\n\r\n')
@@ -166,6 +208,7 @@ class proxify(threading.Thread):
 						rs.send(req)
 					self.c.relay(rs, req)
 
+		t.stop()
 		try: self.c.conn.close()
 		except: pass
 		print('%s/%s client disconnected' % (timestamp(), self.c.id))
