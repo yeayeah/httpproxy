@@ -215,6 +215,15 @@ class proxify(threading.Thread):
 		except: pass
 		print('%s/%s client disconnected' % (timestamp(), self.c.id))
 
+
+def build_proxylist(proxylist, timestamp, sql):
+		if timestamp is None or not len(proxylist) or (time.time() - timestamp) > 20:
+			proxylist = {}
+			for p in sql.execute("SELECT proto,proxy,mitm from proxylist where failed=0").fetchall():
+				proxylist['%s://%s' % (p[0], p[1])] = p[2]
+			timestamp = time.time()
+		return proxylist, timestamp
+
 if __name__ == '__main__':
 	parser = argparse.ArgumentParser()
 	parser.add_argument('--base_chain', help="Comma-delimited default chain (default: socks5://127.0.0.1:9050)", type=str, default='socks5://127.0.0.1:9050', required=False)
@@ -237,19 +246,18 @@ if __name__ == '__main__':
 				blocklist[ line.strip() ] = 1
 			print('%s/block %d item(s) in list' % (timestamp(), len(blocklist)))
 
+	sql_timestamp = None
 	sql = mysqlite.mysqlite(args.database,str)
+	proxylist = {}
 
 	hp = HttpProxy(args.ip, args.port)
 	hp.setup()
-
 	while True:
 		try: c = hp.wait_client()
 		except KeyboardInterrupt: break
 		except: raise
 
-		proxylist = {}
-		for p in sql.execute("SELECT proto,proxy,mitm from proxylist where failed=0").fetchall():
-			proxylist['%s://%s' % (p[0], p[1])] = p[2]
+		proxylist, sql_timestamp = build_proxylist(proxylist, sql_timestamp, sql)
 
 		t = threading.Thread(target=proxify, args=(c, proxylist))
 		t.start()
